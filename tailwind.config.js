@@ -6,7 +6,7 @@ export default {
   ],
   theme: {
     extend: {},
-  },a
+  },
   plugins: [
      require("tailwindcss-animate"),
   ],
