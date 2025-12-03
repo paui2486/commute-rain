@@ -78,10 +78,11 @@ export const fetchRealWeather = async (apiKey, dayOffset, homeName, workName) =>
 
   try {
     // 1. Fetch Forecast (F-D0047-061) - 鄉鎮天氣預報-未來2天(每3小時)
-    // 注意：這裡簡化假設都在台北市，若要支援全台需要更多邏輯 (Lookup Table)
-    const forecastUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/${FORECAST_ID}?Authorization=${apiKey}&format=JSON`;
+    // Note: Parameter must be 'ElementName' (Capital E) for F-D0047 dataset filtering to work.
+    const forecastUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/${FORECAST_ID}?Authorization=${apiKey}&format=JSON&ElementName=溫度,3小時降雨機率,天氣現象,風速`;
 
     // 2. Fetch Current Weather (O-A0003-001) - 只有當 dayOffset === 0 (今天) 才需要
+    // O-A0003-001 also supports elementName, but we generally need standard obs data.
     const currentUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=${apiKey}&format=JSON`;
 
     const [forecastRes, currentRes] = await Promise.all([
@@ -139,25 +140,34 @@ export const fetchRealWeather = async (apiKey, dayOffset, homeName, workName) =>
     let currentDataObj = null;
     if (currentRes) {
         // Find observation for Home location (closest station)
-        // Simplification: Match based on name. In reality, need geospatial distance.
         const stations = currentRes.records.Station;
-        const station = stations.find(s => s.GeoInfo.TownName && homeName.includes(s.GeoInfo.TownName)) || stations[0]; // Fallback to first if not found
 
-        const rainElement = station.WeatherElement.RainfallElement;
-        const tempElement = station.WeatherElement.AirTemperature;
+        // Strategy:
+        // 1. Exact/Fuzzy match on TownName (e.g. "信義區")
+        // 2. Fallback to "臺北" (Taipei Station, usually reliable proxy)
+        // 3. Fallback to first available station
 
-        // Rainfall is usually "Now" (past 1hr or 10min). O-A0003 provides daily/hourly.
-        // Station.WeatherElement.RainfallElement.Now.Precipitation (Wait, check structure)
-        // New O-A0003 structure might be slightly different, let's assume standard keys or check docs.
-        // Usually: station.WeatherElement.Now.Precipitation (mm)
+        let station = stations.find(s => s.GeoInfo.TownName && homeName.includes(s.GeoInfo.TownName));
 
-        // Note: The structure varies. I will try to use safe access.
-        const rainNow = station.WeatherElement.Now?.Precipitation ?? 0;
+        if (!station) {
+            // Check for Taipei Main Station proxy
+            station = stations.find(s => s.StationName === "臺北");
+        }
+
+        if (!station) {
+            station = stations[0];
+        }
+
+        const rainRaw = station.WeatherElement.Now?.Precipitation;
+        const rainNow = parseFloat(rainRaw === 'X' || rainRaw === '-' ? 0 : (rainRaw ?? 0));
         const isRaining = rainNow > 0;
+
+        // Display logic: If exact town not found, show "Taipei (Proxy)" or similar?
+        // Actually, just showing the station name is clear enough.
 
         currentDataObj = {
             timestamp: formatTime(station.ObsTime.DateTime),
-            location: `${station.GeoInfo.TownName} (${station.StationName})`,
+            location: `${station.GeoInfo.TownName || station.StationName}`,
             temp: station.WeatherElement.AirTemperature,
             isRaining: isRaining,
             rainfall: rainNow.toFixed(1),

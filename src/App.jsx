@@ -51,7 +51,7 @@ export default function App() {
         // For now, let's fallback to mock data with a flag or just show mock
         const mock = generateMockData(offset, settings.home, settings.work);
         setDaysData(prev => ({ ...prev, [offset]: mock }));
-        if (offset === 0) setError("無法連線至氣象局 API，已切換至模擬資料。");
+        if (offset === 0) setError(`無法連線至氣象局 API (${err.message})，已切換至模擬資料。`);
       } finally {
         setLoadingStates(prev => ({ ...prev, [offset]: false }));
       }
