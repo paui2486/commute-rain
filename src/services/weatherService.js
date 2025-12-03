@@ -81,9 +81,9 @@ export const fetchRealWeather = async (apiKey, dayOffset, homeName, workName) =>
     // Note: Parameter must be 'ElementName' (Capital E) for F-D0047 dataset filtering to work.
     const forecastUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/${FORECAST_ID}?Authorization=${apiKey}&format=JSON&ElementName=溫度,3小時降雨機率,天氣現象,風速`;
 
-    // 2. Fetch Current Weather (O-A0003-001) - 只有當 dayOffset === 0 (今天) 才需要
-    // O-A0003-001 also supports elementName, but we generally need standard obs data.
-    const currentUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=${apiKey}&format=JSON`;
+    // 2. Fetch Current Weather (O-A0001-001) - Automatic Weather Station (more stations than O-A0003-001)
+    // Switching to O-A0001-001 to get better coverage (e.g., Xinyi, Neihu) which are missing in Manned (O-A0003-001)
+    const currentUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${apiKey}&format=JSON`;
 
     const [forecastRes, currentRes] = await Promise.all([
       fetch(forecastUrl).then(r => r.json()),
@@ -153,7 +153,13 @@ export const fetchRealWeather = async (apiKey, dayOffset, homeName, workName) =>
         });
 
         if (!station) {
-            // Check for Taipei Main Station proxy
+            // Fallback: Try "Zhongzheng District" (Taipei City Center) if the specific district station is missing
+            // This is a common proxy for "Taipei" in AWS datasets where the named station "Taipei" might not exist.
+            station = stations.find(s => s.GeoInfo.TownName === "中正區");
+        }
+
+        if (!station) {
+            // Check for Taipei Main Station proxy by name (just in case)
             station = stations.find(s => s.StationName === "臺北");
         }
 

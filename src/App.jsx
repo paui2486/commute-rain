@@ -88,7 +88,7 @@ export default function App() {
         <header className="flex justify-between items-center mb-6 pt-2">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-              CommuteRain <span className="text-xs bg-slate-800 px-2 py-0.5 rounded text-blue-400">v3.0</span>
+              CommuteRain <span className="text-xs bg-slate-800 px-2 py-0.5 rounded text-blue-400">v3.5</span>
             </h1>
           </div>
           <div className="flex gap-2">
