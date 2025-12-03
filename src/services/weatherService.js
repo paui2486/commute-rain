@@ -5,21 +5,52 @@
 // 通勤時間：08:00 (使用 06:00-09:00 或 06:00-18:00)
 // 通勤時間：17:30 (使用 15:00-18:00 或 06:00-18:00/18:00-06:00)
 const findForecastElement = (weatherElement, elementName, targetTime) => {
-  const element = weatherElement.find(e => e.elementName === elementName);
+  // Element keys might be "elementName" or "ElementName"
+  const element = weatherElement.find(e => (e.elementName === elementName) || (e.ElementName === elementName));
   if (!element) return null;
 
   // Find time slot covering targetTime
   // format: startTime, endTime
+  // Note: key might be "time" or "Time"
+  const timeArray = element.time || element.Time;
   const target = new Date(targetTime).getTime();
 
-  const timeSlot = element.time.find(t => {
-    const start = new Date(t.startTime).getTime();
-    const end = new Date(t.endTime).getTime();
+  const timeSlot = timeArray.find(t => {
+    // Keys might be "startTime"/"endTime" or "StartTime"/"EndTime" or "dataTime"/"DataTime"
+    const startStr = t.startTime || t.StartTime || t.dataTime || t.DataTime;
+    const endStr = t.endTime || t.EndTime;
+
+    // If only dataTime is present (point-in-time forecast), assume it covers a 3-hour window or exact match
+    if (!endStr) {
+        const start = new Date(startStr).getTime();
+        // Assuming 3-hour block for safety if no end time, or checking valid range
+        return Math.abs(target - start) < 3 * 60 * 60 * 1000;
+    }
+
+    const start = new Date(startStr).getTime();
+    const end = new Date(endStr).getTime();
     return target >= start && target < end;
   });
 
   if (!timeSlot) return null;
-  return timeSlot.elementValue[0].value;
+
+  // elementValue structure: [{ value: "20", measures: "..." }] or [{ ElementValue: [{ Temperature: "19" }] }]
+  // The structure in debug log is:
+  // "ElementValue": [{"Temperature": "19"}] or [{"ProbabilityOfPrecipitation": "20"}]
+  // This is non-standard compared to other CWA APIs.
+
+  const valObj = timeSlot.elementValue || timeSlot.ElementValue;
+  if (Array.isArray(valObj)) {
+      if (valObj[0].value) return valObj[0].value;
+
+      // Handle the complex object structure seen in debug log
+      // e.g. [{"Temperature": "19"}]
+      const firstVal = valObj[0];
+      const values = Object.values(firstVal);
+      if (values.length > 0) return values[0];
+  }
+
+  return null;
 };
 
 // 台北市
@@ -63,18 +94,33 @@ export const fetchRealWeather = async (apiKey, dayOffset, homeName, workName) =>
     }
 
     // Process Forecast Data
-    const locations = forecastRes.records.locations[0].location;
+    // Note: CWA API keys might be capitalized differently depending on the dataset version.
+    // F-D0047-061 returns "Locations" (capital L) and "Location" (capital L).
+    const records = forecastRes.records;
+    const locationsNode = records.locations || records.Locations;
+    if (!locationsNode || locationsNode.length === 0) {
+        throw new Error("Invalid API Response: No locations node found");
+    }
+    const locationList = locationsNode[0].location || locationsNode[0].Location;
 
     // Helper to extract data for a specific location and time
     const getLocationData = (locName, timeTarget) => {
       // Fuzzy match location name (e.g. "信義區" -> match "信義區")
-      const locData = locations.find(l => l.locationName.includes(locName) || locName.includes(l.locationName));
+      // Handle both locationName and LocationName
+      const locData = locationList.find(l => {
+          const name = l.locationName || l.LocationName;
+          return name.includes(locName) || locName.includes(name);
+      });
+
       if (!locData) return null; // Fallback handled later
 
-      const pop = findForecastElement(locData.weatherElement, "PoP12h", timeTarget) || findForecastElement(locData.weatherElement, "PoP6h", timeTarget) || "0";
-      const temp = findForecastElement(locData.weatherElement, "T", timeTarget);
-      const wx = findForecastElement(locData.weatherElement, "Wx", timeTarget);
-      const ws = findForecastElement(locData.weatherElement, "WS", timeTarget);
+      // Element keys might also vary (weatherElement vs WeatherElement)
+      const weatherElements = locData.weatherElement || locData.WeatherElement;
+
+      const pop = findForecastElement(weatherElements, "PoP12h", timeTarget) || findForecastElement(weatherElements, "PoP6h", timeTarget) || findForecastElement(weatherElements, "3小時降雨機率", timeTarget) || "0";
+      const temp = findForecastElement(weatherElements, "T", timeTarget) || findForecastElement(weatherElements, "溫度", timeTarget);
+      const wx = findForecastElement(weatherElements, "Wx", timeTarget) || findForecastElement(weatherElements, "天氣現象", timeTarget);
+      const ws = findForecastElement(weatherElements, "WS", timeTarget) || findForecastElement(weatherElements, "風速", timeTarget);
 
       return {
         pop: parseInt(pop),
