@@ -147,7 +147,10 @@ export const fetchRealWeather = async (apiKey, dayOffset, homeName, workName) =>
         // 2. Fallback to "臺北" (Taipei Station, usually reliable proxy)
         // 3. Fallback to first available station
 
-        let station = stations.find(s => s.GeoInfo.TownName && homeName.includes(s.GeoInfo.TownName));
+        let station = stations.find(s => {
+            const townName = s.GeoInfo.TownName;
+            return townName && (homeName.includes(townName) || townName.includes(homeName));
+        });
 
         if (!station) {
             // Check for Taipei Main Station proxy
